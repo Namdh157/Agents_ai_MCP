@@ -1,0 +1,20 @@
+{
+  "name": "brain-os",
+  "version": "1.0.0",
+  "description": "Local AI Brain — Autonomous Agent Orchestration System",
+  "scripts": {
+    "copilot": "npx copilot-api start",
+    "start": "npm run build --prefix frontend && node backend/server.js",
+    "dev:backend": "node --watch backend/server.js",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:frontend": "npm run build --prefix frontend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
