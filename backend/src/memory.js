@@ -280,10 +280,18 @@ function assemblePrompt({
   );
   const complete = ensureTurnCompleteness(selected, prunedHistory);
 
-  const context = complete.map(m => ({
-    role: m.role === 'tool' ? 'user' : m.role,
-    content: m.content,
-  }));
+  const context = complete.map(m => {
+    let content = m.content;
+    // Prefix assistant messages with their name in group chats
+    if (m.role === 'assistant' && (m.senderName || m.senderAgentId)) {
+      const name = m.senderName || m.senderAgentId;
+      content = `[${name}]: ${content}`;
+    }
+    return {
+      role: m.role === 'tool' ? 'user' : m.role,
+      content,
+    };
+  });
 
   const usedChars = systemPrompt.length + currentInput.length +
     complete.reduce((a, m) => a + m.content.length + MEMORY_CONSTANTS.MESSAGE_OVERHEAD_CHARS, 0) +

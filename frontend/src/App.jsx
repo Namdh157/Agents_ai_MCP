@@ -72,9 +72,11 @@ export default function App() {
         setIsStreaming(true)
         setChatMessages(prev => {
           const last = prev[prev.length - 1]
-          if (last?.type === 'streaming')
+          // If the last message is streaming and from the same sender, append
+          if (last?.type === 'streaming' && last.senderName === msg.senderName)
             return [...prev.slice(0, -1), { ...last, tokens: last.tokens + msg.token }]
-          return [...prev, { id: msg.requestId, type: 'streaming', tokens: msg.token }]
+          // Otherwise start a new streaming block
+          return [...prev, { id: msg.requestId + (msg.senderName || ''), type: 'streaming', tokens: msg.token, senderName: msg.senderName }]
         })
         break
       case 'tool_call':
@@ -85,7 +87,7 @@ export default function App() {
         setChatMessages(prev => {
           const last = prev[prev.length - 1]
           if (last?.type === 'streaming')
-            return [...prev.slice(0, -1), { ...last, type: 'assistant', content: last.tokens, stats: msg.stats }]
+            return [...prev.slice(0, -1), { ...last, type: 'assistant', content: last.tokens, stats: msg.stats, senderName: last.senderName }]
           return prev
         })
         refetchAgents()

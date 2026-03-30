@@ -371,11 +371,13 @@ async function callOpenAI({ model, messages, apiKey, onToken, onDone, onError })
 
 // ─── Run agent ────────────────────────────────────────────────────────────────
 
-async function runAgent({ agentId, userInput, onToken, onDone, onError }) {
+async function runAgent({ agentId, userInput, memoryId, extraSystemContent, onToken, onDone, onError }) {
   const agent = getById(agentId);
   if (!agent) { onError(new Error(`Agent not found: ${agentId}`)); return; }
 
-  // Build system prompt: base + skills + context notes
+  const targetMemoryId = memoryId || agentId;
+
+  // Build system prompt: base + skills + context notes + extra group context
   let fullSystemPrompt = agent.systemPrompt || 'You are a helpful assistant.';
 
   if (agent.skills && agent.skills.length > 0) {
@@ -387,9 +389,13 @@ async function runAgent({ agentId, userInput, onToken, onDone, onError }) {
     fullSystemPrompt += '\n\n## Context Notes (accumulated knowledge)\n' + agent.contextNotes;
   }
 
+  if (extraSystemContent) {
+    fullSystemPrompt += '\n\n## Discussion Context\n' + extraSystemContent;
+  }
+
   const assembled = memory.assemblePrompt({
     currentInput: userInput,
-    agentId,
+    agentId: targetMemoryId,
     systemPrompt: fullSystemPrompt,
     tokenBudget: AGENT_CONSTANTS.TOKEN_BUDGET,
   });
@@ -400,12 +406,12 @@ async function runAgent({ agentId, userInput, onToken, onDone, onError }) {
     { role: 'user', content: userInput },
   ];
 
-  logger.info(`agent:${agent.name}`, `Running. Context: ${assembled.stats.selectedMessages} msgs`);
+  logger.info(`agent:${agent.name}`, `Running. Context: ${assembled.stats.selectedMessages} msgs (memory:${targetMemoryId})`);
 
-  memory.store('user', userInput, agentId);
+  memory.store('user', userInput, targetMemoryId);
 
   const wrappedDone = (content) => {
-    memory.store('assistant', content, agentId);
+    memory.store('assistant', content, targetMemoryId, { senderName: agent.name, senderAgentId: agent.id });
 
     if (agent.autoUpdateContext && content.length > AGENT_CONSTANTS.AUTO_UPDATE_MIN_RESPONSE_LENGTH) {
       const summary = `Q: ${userInput.slice(0, AGENT_CONSTANTS.AUTO_UPDATE_QUESTION_PREVIEW_LENGTH)} → A: ${content.slice(0, AGENT_CONSTANTS.AUTO_UPDATE_ANSWER_PREVIEW_LENGTH)}`;

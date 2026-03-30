@@ -499,6 +499,31 @@ app.put('/api/sessions/:id/context', (req, res) => {
   res.json({ ok: true, systemContext: s.systemContext })
 })
 
+// POST /api/sessions/:id/participants — add agent to group
+app.post('/api/sessions/:id/participants', (req, res) => {
+  const { agentId } = req.body;
+  if (!agentId) return res.status(400).json({ error: 'agentId required' });
+  const s = sessions.addParticipant(req.params.id, agentId);
+  if (!s) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true, participants: s.participants, isGroup: s.isGroup });
+});
+
+// DELETE /api/sessions/:id/participants/:agentId — remove agent from group
+app.delete('/api/sessions/:id/participants/:agentId', (req, res) => {
+  const s = sessions.removeParticipant(req.params.id, req.params.agentId);
+  if (!s) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true, participants: s.participants, isGroup: s.isGroup });
+});
+
+// PUT /api/sessions/:id/mode — update session mode (orchestrated | consensus)
+app.put('/api/sessions/:id/mode', (req, res) => {
+  const { mode } = req.body;
+  if (!mode) return res.status(400).json({ error: 'mode required' });
+  const s = sessions.update(req.params.id, { mode });
+  if (!s) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true, mode: s.mode });
+});
+
 
 // ─── WebSocket ─────────────────────────────────────────────────────────────────
 const server = http.createServer(app);
@@ -526,7 +551,7 @@ wss.on('connection', (ws, req) => {
       );
 
       const send = (payload) => ws.send(JSON.stringify({ ...payload, requestId }));
-      const onToken = (token) => send({ type: 'chat_token', token });
+      const onToken = (token, senderName) => send({ type: 'chat_token', token, senderName });
       const onDone = (c, stats) => {
         send({ type: 'chat_done', stats });
         // Touch session updatedAt so it bubbles to top of list
@@ -548,7 +573,13 @@ wss.on('connection', (ws, req) => {
         // Specialist agents (translator, dev-agent, etc.)
         const agent = agents.getById(agentId);
         if (!agent) { onError(new Error(`Agent '${agentId}' not found`)); return; }
-        await agents.runAgent({ agentId, userInput: content, onToken, onDone, onError });
+        await agents.runAgent({ 
+          agentId, 
+          userInput: content, 
+          onToken: (t) => onToken(t, agent.name), 
+          onDone, 
+          onError 
+        });
       }
     }
 
@@ -580,15 +611,20 @@ async function start() {
     process.exit(1);
   }
 
-  await sessions.init();
-  await logger.init();
-  await memory.init();
-  if (selfLearn) await selfLearn.init();
-  await agents.init();
-  await telegram.init(brain);
-  await mcp.init();
+  await logger.init(); // Load past logs first
+
+  await Promise.all([
+    sessions.init(),
+    memory.init(),
+    selfLearn ? selfLearn.init() : Promise.resolve(),
+    agents.init(),
+    telegram.init(brain),
+    mcp.init(),
+    brain.loadBrainSkills(),
+    require('./src/scheduler').syncJobs()
+  ]);
+
   brain.setModel(MODEL);
-  await brain.loadBrainSkills();
   brain.checkOllama().catch(() => { });
 
   app.get('*', (req, res, next) => {

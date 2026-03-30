@@ -105,3 +105,19 @@ CREATE TABLE IF NOT EXISTS config (
 );
 ALTER TABLE config ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_role_all" ON config FOR ALL USING (true);
+
+-- Health Agent Reminders Migration
+-- Run in Supabase SQL Editor
+
+CREATE TABLE IF NOT EXISTS reminders (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  task TEXT NOT NULL,
+  cron_expr TEXT NOT NULL,
+  metadata JSONB DEFAULT '{}',
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all" ON reminders FOR ALL USING (true);

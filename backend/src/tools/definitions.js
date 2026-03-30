@@ -375,6 +375,45 @@ const TOOL_DEFINITIONS = [
     },
   },
 
+  // ── Health Agent ────────────────────────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'create_health_reminder',
+      description: 'Lên lịch nhắc nhở báo thức cho người dùng. Yêu cầu nhập tác vụ và biểu thức cron.',
+      parameters: {
+        type: 'object',
+        properties: {
+          task: { type: 'string', description: 'Nội dung công việc cần nhắc nhở (VD: Uống 1 cốc nước)' },
+          cron_expr: { type: 'string', description: 'Biểu thức cron cho thời điểm nhắc nhở. (VD: "0 8 * * *")' },
+        },
+        required: ['task', 'cron_expr'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_health_reminders',
+      description: 'Hiện danh sách tất cả các báo thức sức khỏe đang hoạt động của người dùng.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_health_reminder',
+      description: 'Huỷ bỏ 1 nhắc nhở dựa trên reminder_id. Danh sách id có thể lấy từ list_health_reminders.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reminder_id: { type: 'string' },
+        },
+        required: ['reminder_id'],
+      },
+    },
+  },
+
   // ── Skills ──────────────────────────────────────────────────────────────────
   {
     type: 'function',

@@ -95,11 +95,46 @@ function create({ name }) {
     updatedAt: Date.now(),
     pinned: false,
     systemContext: '',
+    isGroup: false,
+    participants: ['brain'],
+    mode: 'orchestrated',
   };
   sessions.unshift(session);
   persist(session);
   logger.info('sessions', `Created session: "${session.name}" (${id})`);
   return session;
+}
+
+function update(id, data) {
+  const s = sessions.find(s => s.id === id);
+  if (!s) return null;
+  Object.assign(s, data);
+  s.updatedAt = Date.now();
+  persist(s);
+  return s;
+}
+
+function addParticipant(sessionId, agentId) {
+  const s = getById(sessionId);
+  if (!s) return null;
+  if (!s.participants) s.participants = ['brain'];
+  if (!s.participants.includes(agentId)) {
+    s.participants.push(agentId);
+    s.isGroup = s.participants.length > 1;
+    update(sessionId, { participants: s.participants, isGroup: s.isGroup });
+  }
+  return s;
+}
+
+function removeParticipant(sessionId, agentId) {
+  const s = getById(sessionId);
+  if (!s || agentId === 'brain') return s;
+  if (s.participants) {
+    s.participants = s.participants.filter(p => p !== agentId);
+    s.isGroup = s.participants.length > 1;
+    update(sessionId, { participants: s.participants, isGroup: s.isGroup });
+  }
+  return s;
 }
 
 function rename(id, name) {
@@ -130,4 +165,15 @@ function remove(id) {
   return true;
 }
 
-module.exports = { init: load, getAll, getById, create, rename, touch, remove };
+module.exports = { 
+  init: load, 
+  getAll, 
+  getById, 
+  create, 
+  update, 
+  addParticipant, 
+  removeParticipant, 
+  rename, 
+  touch, 
+  remove 
+};

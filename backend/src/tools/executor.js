@@ -42,6 +42,11 @@ const TOOL_MODULES = {
   // Telegram
   send_telegram: () => require('./telegram').send_telegram,
 
+  // Health
+  create_health_reminder: () => require('./health').create_health_reminder,
+  list_health_reminders: () => require('./health').list_health_reminders,
+  delete_health_reminder: () => require('./health').delete_health_reminder,
+
   // Skills
   import_skill: () => require('./skills').import_skill,
 

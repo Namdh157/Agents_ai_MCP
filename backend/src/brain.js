@@ -424,20 +424,108 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
   // Store user message
   memory.store('user', userInput, agentId);
 
+  // ─── Group Chat Coordination ────────────────────────────────────────────────
+  if (session?.isGroup) {
+    const participants = session.participants || ['brain'];
+    const agentsModule = require('./agents');
+    
+    // 1. Detect mentions (e.g. "@dev-agent")
+    const mentions = participants.filter(p => p !== 'brain' && userInput.includes(`@${p}`));
+    
+    // 2. Decide targets and execution mode
+    let targets = [];
+    if (mentions.length > 0) {
+      targets = mentions;
+    } else if (session.mode === 'consensus' || session.mode === 'pipeline') {
+      targets = participants.filter(p => p !== 'brain');
+    }
+
+    // 3. Run specialists if needed
+    if (targets.length > 0) {
+      const isPipeline = session.mode === 'pipeline';
+      logger.info('brain', `Group session: triggering ${targets.length} specialist(s) in ${isPipeline ? 'PIPELINE' : 'PARALLEL'} mode`);
+      
+      if (isPipeline) {
+        // Sequential execution (A -> B -> C)
+        for (const pId of targets) {
+          const agent = agentsModule.getById(pId);
+          if (!agent) continue;
+
+          onToken(`\n\n> *[Step: ${agent.name}]*\n\n`, agent.name);
+          
+          await new Promise((resolve) => {
+            agentsModule.runAgent({
+              agentId: pId,
+              memoryId: agentId, // Share session memory
+              userInput,
+              extraSystemContent: `Bạn đang tham gia thảo luận theo chuỗi. Hãy ĐỌC KỸ các ý kiến của các agent đi trước trong lịch sử chat. Nhiệm vụ của bạn là: đồng ý, phản biện hoặc bổ sung góc nhìn mới. ĐỪNG lặp lại những gì người khác đã nói.`,
+              onToken: (t) => onToken(t),
+              onDone: (c) => resolve(c),
+              onError: (err) => {
+                onToken(`\n\n> *[${agent.name} error: ${err.message}]*\n\n`);
+                resolve(null);
+              }
+            });
+          });
+        }
+      } else {
+        // Parallel execution (Consensus or specific mentions)
+        await Promise.all(targets.map(async (pId) => {
+          const agent = agentsModule.getById(pId);
+          if (!agent) return;
+
+          onToken(`\n\n> *[${agent.name} is thinking...]*\n\n`, agent.name);
+
+          return new Promise((resolve) => {
+            agentsModule.runAgent({
+              agentId: pId,
+              memoryId: agentId, // Share session memory
+              userInput,
+              extraSystemContent: `Bạn đang thảo luận nhóm cùng các chuyên gia khác. Hãy đưa ra quan điểm ĐỘC ĐÁO dựa trên vai trò của bạn. Tránh đưa ra các câu trả lời chung chung giống hệt người khác.`,
+              onToken: (t) => onToken(t),
+              onDone: (content) => resolve(content),
+              onError: (err) => {
+                onToken(`\n\n> *[${agent.name} error: ${err.message}]*\n\n`);
+                resolve(null);
+              }
+            });
+          });
+        }));
+      }
+
+      // After all specialists finish, re-assemble for Brain's final synthesis
+      const refreshed = memory.assemblePrompt({
+        currentInput: userInput,
+        agentId,
+        systemPrompt: fullSystemPrompt + '\n\nPlease synthesize the expert opinions above and provide a final conclusion.',
+        tokenBudget: BRAIN_CONSTANTS.TOKEN_BUDGET,
+      });
+      
+      // Update loopMessages for the standard Brain loop
+      const loopMessages = [
+        { role: 'system', content: refreshed.systemPrompt },
+        ...refreshed.context,
+        { role: 'user', content: userInput },
+      ];
+
+      // Proceed to Brain's synthesis loop
+      return await enterToolLoop(loopMessages, agentId, refreshed.stats, onToken, onDone, onError, onToolCall);
+    }
+  }
+
   const loopMessages = [
     { role: 'system', content: assembled.systemPrompt },
     ...assembled.context,
     { role: 'user', content: userInput },
   ];
 
-  // ─── Tool calling loop ─────────────────────────────────────────────────────
-  //
-  // When model returns message with BOTH content AND tool_calls:
-  //   content = intermediate thought (not the final answer)
-  //   tool_calls = must be executed before responding
-  //
-  // We only stream to the user when there are NO tool_calls in the response.
+  return await enterToolLoop(loopMessages, agentId, assembled.stats, onToken, onDone, onError, onToolCall);
+}
 
+/**
+ * Extracted tool loop from chat() to avoid duplication in group logic
+ */
+async function enterToolLoop(loopMessages, agentId, stats, onToken, onDone, onError, onToolCall) {
   const MAX_LOOPS = BRAIN_CONSTANTS.TOOL_LOOP_LIMIT;
 
   for (let loop = 1; loop <= MAX_LOOPS; loop++) {
@@ -458,18 +546,20 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
     // ── No tool calls → final answer ─────────────────────────────────────────
     if (!hasTools) {
       if (msg.content) {
-        for (const ch of msg.content) onToken(ch);
-        memory.store('assistant', msg.content, agentId);
-        onDone(msg.content, assembled.stats);
+        for (const ch of msg.content) onToken(ch, 'Brain');
+        memory.store('assistant', msg.content, agentId, { senderName: 'Brain' });
+
+        onDone(msg.content, stats);
       } else {
         // Empty content — fall back to streaming
         await streamChat({
           messages: loopMessages,
           model: config.model,
-          onToken,
+          onToken: (token) => onToken(token, 'Brain'),
           onDone: (content) => {
-            memory.store('assistant', content, agentId);
-            onDone(content, assembled.stats);
+            memory.store('assistant', content, agentId, { senderName: 'Brain' });
+
+            onDone(content, stats);
           },
           onError,
         });

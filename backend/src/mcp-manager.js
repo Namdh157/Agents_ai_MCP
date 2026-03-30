@@ -173,10 +173,20 @@ async function spawnStdioServer(server) {
     }
   }
 
+  const spawnEnv = {
+    ...process.env,
+    PYTHONUNBUFFERED: '1',
+    // On Windows, some system calls fail if SystemRoot or ComSpec is missing
+    SystemRoot: process.env.SystemRoot || 'C:\\Windows',
+    ComSpec: process.env.ComSpec || 'cmd.exe',
+  };
+
+  logger.debug('mcp', `${server.name}: Spawning with cmd="${cmd}", cwd="${cwd}"`);
+
   const child = spawn(cmd, args, {
     shell: true,
     cwd,
-    env: { ...process.env, PYTHONUNBUFFERED: '1' }
+    env: spawnEnv
   });
 
   const state = {

@@ -86,6 +86,35 @@ function setOwnerChatId(chatId) {
   logger.info('telegram', `Owner chat ID set: ${chatId}`);
 }
 
+async function sendReminderMessage(chatId, taskText, reminderId) {
+  if (!bot) return;
+  // Fallback to configured owner if chatId is 'owner' or undefined
+  const targetId = (chatId && chatId !== 'owner') ? chatId : config.telegramOwnerChatId;
+  if (!targetId) {
+    logger.warn('telegram', 'Cannot send reminder: No target chat ID available.');
+    return;
+  }
+
+  const opts = {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '✅ Đã làm xong', callback_data: `reminder_done_${reminderId}` },
+          { text: '⏳ Để sau (10p)', callback_data: `reminder_delay_${reminderId}` }
+        ]
+      ]
+    }
+  };
+
+  const text = `🔔 Nhắc nhở: ${taskText}`;
+  try {
+    await bot.sendMessage(targetId, text, opts);
+    logger.info('telegram', `Sent reminder: ${taskText} to ${targetId}`);
+  } catch (err) {
+    logger.warn('telegram', `Failed to send reminder: ${err.message}`);
+  }
+}
+
 // ── Connect ───────────────────────────────────────────────────────────────────
 
 async function connect(token) {
@@ -207,6 +236,37 @@ async function connect(token) {
     logger.warn('telegram', `Polling: ${msg}`);
   });
 
+  bot.on('callback_query', async (query) => {
+    try {
+      const action = query.data;
+      const msg = query.message;
+
+      // Prevent redundant clicks
+      if (msg.text.includes('✅ Đã hoàn thành') || msg.text.includes('⏳ Đã hoãn')) {
+        await bot.answerCallbackQuery(query.id, { text: 'Nhiệm vụ này đã được xử lý rồi!' });
+        return;
+      }
+
+      if (action.startsWith('reminder_done_')) {
+        const id = action.replace('reminder_done_', '');
+        await bot.answerCallbackQuery(query.id, { text: 'Tuyệt vời! Bạn đã hoàn thành nhiệm vụ.' });
+        await bot.editMessageText(msg.text + '\n\n✅ Đã hoàn thành!', {
+          chat_id: msg.chat.id,
+          message_id: msg.message_id
+        });
+      } else if (action.startsWith('reminder_delay_')) {
+        const id = action.replace('reminder_delay_', '');
+        await bot.answerCallbackQuery(query.id, { text: 'Nhắc lại sau 10 phút.' });
+        await bot.editMessageText(msg.text + '\n\n⏳ Đã hoãn lại 10 phút.', {
+          chat_id: msg.chat.id,
+          message_id: msg.message_id
+        });
+      }
+    } catch (err) {
+      logger.warn('telegram', `Lỗi xử lý callback query: ${err.message}`);
+    }
+  });
+
   return botInfo;
 }
 
@@ -244,7 +304,7 @@ async function init(brainModule) {
 
 module.exports = {
   init, connect, disconnect,
-  getStatus, sendToOwner, setOwnerChatId,
+  getStatus, sendToOwner, setOwnerChatId, sendReminderMessage,
   getMessages: () => messageLog,
   registerClient: (ws) => wsClients.add(ws),
   removeClient: (ws) => wsClients.delete(ws),
