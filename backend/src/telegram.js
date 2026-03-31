@@ -18,6 +18,7 @@ let messageLog = [];
 let wsClients = new Set();
 let config = {};
 let brain = null;
+let routingMap = {};
 
 // Track pending requests per chat để tránh double-reply
 const pendingChats = new Set();
@@ -31,6 +32,9 @@ async function loadConfig() {
 
 function saveConfig(data) {
   config = { ...config, ...data };
+  if (data.telegramRouting) {
+    try { routingMap = JSON.parse(data.telegramRouting); } catch {}
+  }
   const rows = Object.entries(data).map(([key, value]) => ({ key, value: String(value) }));
   (async () => {
     try {
@@ -115,6 +119,52 @@ async function sendReminderMessage(chatId, taskText, reminderId) {
   }
 }
 
+async function triggerAgentReminder(chatId, taskText, reminderId) {
+  if (!bot) return;
+  const targetId = (chatId && chatId !== 'owner') ? chatId : config.telegramOwnerChatId;
+  if (!targetId) return;
+
+  const routedAgentId = routingMap[targetId];
+  const agentsModule = require('./agents');
+
+  if (routedAgentId && agentsModule.getById(routedAgentId)) {
+    const prompt = `[Hệ thống kích hoạt Báo thức]: Đã đến giờ nhắc nhở người dùng thực hiện nhiệm vụ: "${taskText}". Bạn hãy lập tức đóng vai giáo viên/trợ thủ, dựa vào lịch sử chat để soạn một bài học, bài tập hoặc thông tin kiến thức liên quan đến nhiệm vụ này gửi cho người dùng ngay nhé! Thêm lời nhắc nhở họ làm bài.`;
+
+    let fullResponse = '';
+    bot.sendChatAction(targetId, 'typing').catch(() => {});
+
+    agentsModule.runAgent({
+      agentId: routedAgentId,
+      userInput: prompt,
+      memoryId: `tg-${targetId}`,
+      onToken: (token) => { fullResponse += token; },
+      onDone: (content) => {
+        const reply = content || fullResponse;
+        if (!reply.trim()) return;
+
+        bot.sendMessage(targetId, reply, {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Đã hoàn thành', callback_data: `reminder_done_${reminderId}` },
+                { text: '⏳ Để sau (10p)', callback_data: `reminder_delay_${reminderId}` }
+              ]
+            ]
+          }
+        }).catch(e => logger.warn('telegram', `Failed agent reminder send: ${e.message}`));
+      },
+      onError: (e) => {
+        logger.error('telegram', `Agent reminder error: ${e.message}`);
+        bot.sendMessage(targetId, `⚠️ Báo thức: ${taskText} (Lỗi AI: ${e.message})`).catch(()=>{});
+      }
+    });
+
+  } else {
+    // Không có agent định tuyến -> Dùng lệnh nhắc nhở thông thường
+    sendReminderMessage(targetId, taskText, reminderId);
+  }
+}
+
 // ── Connect ───────────────────────────────────────────────────────────────────
 
 async function connect(token) {
@@ -143,6 +193,37 @@ async function connect(token) {
     const chatId = String(msg.chat.id);
     const text = msg.text;
     if (!text) return;
+
+    const agentsModule = require('./agents');
+
+    // ── Lệnh Slash Commands ──
+    if (text.startsWith('/listagents')) {
+      const allAgents = agentsModule.getAll();
+      const textList = allAgents.map(a => `- \`${a.id}\`: ${a.name}`).join('\n');
+      return bot.sendMessage(chatId, `Danh sách Agents:\n${textList}`, { parse_mode: 'Markdown' }).catch(()=>{});
+    }
+
+    if (text.startsWith('/setagent ')) {
+      const isOwner = String(msg.from?.id) === config.telegramOwnerChatId || chatId === config.telegramOwnerChatId;
+      if (!isOwner) {
+        return bot.sendMessage(chatId, '❌ Chỉ Chủ sở hữu mới có quyền gắn Agent!').catch(()=>{});
+      }
+      const targetAgentId = text.split(' ')[1];
+      if (!agentsModule.getById(targetAgentId)) {
+        return bot.sendMessage(chatId, `❌ Không tìm thấy Agent ID: ${targetAgentId}`).catch(()=>{});
+      }
+      routingMap[chatId] = targetAgentId;
+      saveConfig({ telegramRouting: JSON.stringify(routingMap) });
+      return bot.sendMessage(chatId, `✅ Đã gán thành công phòng chat này cho Agent: ${targetAgentId}`).catch(()=>{});
+    }
+
+    if (text === '/resetagent') {
+      const isOwner = String(msg.from?.id) === config.telegramOwnerChatId || chatId === config.telegramOwnerChatId;
+      if (!isOwner) return bot.sendMessage(chatId, '❌ Chỉ Chủ sở hữu mới có quyền!').catch(()=>{});
+      delete routingMap[chatId];
+      saveConfig({ telegramRouting: JSON.stringify(routingMap) });
+      return bot.sendMessage(chatId, `✅ Đã gỡ bỏ Agent! Phòng chat này trở lại quyền của Brain OS mặc định.`).catch(()=>{});
+    }
 
     // Build display name for sender
     const from = msg.from;
@@ -179,56 +260,78 @@ async function connect(token) {
     pendingChats.add(chatId);
 
     // Each chatId gets its own memory context
-    // Format: tg-{chatId} → isolated from web chat ('brain') and other telegram chats
-    const agentId = `tg-${chatId}`;
+    const memoryId = `tg-${chatId}`;
 
     bot.sendChatAction(chatId, 'typing').catch(() => {});
 
     let fullResponse = '';
 
-    brain.chat({
-      userInput: text,
-      agentId,                    // ← per-chat isolated context
-      onToken: (token) => {
-        fullResponse += token;
-      },
-      onDone: (content) => {
-        pendingChats.delete(chatId);
-        const reply = content || fullResponse;
-        if (!reply.trim()) return;
+    const onToken = (token) => { fullResponse += token; };
+    const onDone = (content) => {
+      pendingChats.delete(chatId);
+      const reply = content || fullResponse;
+      if (!reply.trim()) return;
 
-        // Split long messages
-        const chunks = [];
-        for (let i = 0; i < reply.length; i += TELEGRAM_CONSTANTS.MESSAGE_CHUNK_SIZE) {
-          chunks.push(reply.slice(i, i + TELEGRAM_CONSTANTS.MESSAGE_CHUNK_SIZE));
+      const chunks = [];
+      for (let i = 0; i < reply.length; i += TELEGRAM_CONSTANTS.MESSAGE_CHUNK_SIZE) {
+        chunks.push(reply.slice(i, i + TELEGRAM_CONSTANTS.MESSAGE_CHUNK_SIZE));
+      }
+
+      (async () => {
+        for (const chunk of chunks) {
+          await bot.sendMessage(chatId, chunk).catch(e =>
+            logger.warn('telegram', `Send error: ${e.message}`)
+          );
         }
+      })();
 
-        (async () => {
-          for (const chunk of chunks) {
-            await bot.sendMessage(chatId, chunk).catch(e =>
-              logger.warn('telegram', `Send error: ${e.message}`)
-            );
-          }
-        })();
+      broadcastMessage({
+        id: Date.now(),
+        direction: 'out',
+        from: 'Brain',
+        to: senderName,
+        chatId,
+        text: reply.slice(0, TELEGRAM_CONSTANTS.MESSAGE_PREVIEW_LENGTH) + (reply.length > TELEGRAM_CONSTANTS.MESSAGE_PREVIEW_LENGTH ? '…' : ''),
+        timestamp: new Date().toISOString(),
+      });
+    };
+    const onError = (e) => {
+      pendingChats.delete(chatId);
+      logger.error('telegram', `Chat error for ${chatId}: ${e.message}`);
+      bot.sendMessage(chatId, `⚠️ Lỗi: ${e.message}`).catch(() => {});
+    };
 
-        // Log outgoing to UI
-        broadcastMessage({
-          id: Date.now(),
-          direction: 'out',
-          from: 'Brain',
-          to: senderName,
-          chatId,
-          text: reply.slice(0, TELEGRAM_CONSTANTS.MESSAGE_PREVIEW_LENGTH) + (reply.length > TELEGRAM_CONSTANTS.MESSAGE_PREVIEW_LENGTH ? '…' : ''),
-          timestamp: new Date().toISOString(),
-        });
-      },
-      onError: (e) => {
-        pendingChats.delete(chatId);
-        logger.error('telegram', `Chat error for ${chatId}: ${e.message}`);
-        bot.sendMessage(chatId, `⚠️ Lỗi: ${e.message}`).catch(() => {});
-      },
+    const isSummoningBrain = text.toLowerCase().startsWith('@brain ') || text.toLowerCase().startsWith('/brain ');
+    const cleanedText = isSummoningBrain ? text.replace(/^@brain\s+|^\/brain\s+/i, '').trim() : text;
+    
+    // Inject hidden chat_id and user_info context so the agent knows where to schedule tools and who is talking
+    const userInfo = JSON.stringify({
+      id: msg.from.id,
+      username: msg.from.username,
+      first_name: msg.from.first_name,
+      last_name: msg.from.last_name
     });
+    const inputPrompt = `[System Context: Target Chat ID = ${chatId}, User Info = ${userInfo}]\nUser: ${cleanedText}`;
+
+    const routedAgentId = routingMap[chatId];
+    if (routedAgentId && agentsModule.getById(routedAgentId) && !isSummoningBrain) {
+      // Gọi trực tiếp Agent cụ thể
+      agentsModule.runAgent({
+        agentId: routedAgentId,
+        userInput: inputPrompt,
+        memoryId,
+        onToken, onDone, onError
+      });
+    } else {
+      // Mặc định gọi Brain orchestrator
+      brain.chat({
+        userInput: inputPrompt,
+        agentId: memoryId,
+        onToken, onDone, onError
+      });
+    }
   });
+// (removed due to refactoring above)
 
   bot.on('polling_error', (err) => {
     const msg = err?.message || String(err);
@@ -293,6 +396,9 @@ function getStatus() {
 async function init(brainModule) {
   brain = brainModule;
   await loadConfig();
+  if (config.telegramRouting) {
+    try { routingMap = JSON.parse(config.telegramRouting); } catch {}
+  }
   if (config.telegramToken) {
     setTimeout(() => {
       connect(config.telegramToken).catch(e =>
@@ -304,7 +410,7 @@ async function init(brainModule) {
 
 module.exports = {
   init, connect, disconnect,
-  getStatus, sendToOwner, setOwnerChatId, sendReminderMessage,
+  getStatus, sendToOwner, setOwnerChatId, sendReminderMessage, triggerAgentReminder,
   getMessages: () => messageLog,
   registerClient: (ws) => wsClients.add(ws),
   removeClient: (ws) => wsClients.delete(ws),

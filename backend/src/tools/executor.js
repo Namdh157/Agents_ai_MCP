@@ -42,10 +42,15 @@ const TOOL_MODULES = {
   // Telegram
   send_telegram: () => require('./telegram').send_telegram,
 
-  // Health
-  create_health_reminder: () => require('./health').create_health_reminder,
-  list_health_reminders: () => require('./health').list_health_reminders,
-  delete_health_reminder: () => require('./health').delete_health_reminder,
+  // Reminders
+  create_reminder: () => require('./reminders').create_reminder,
+  list_reminders: () => require('./reminders').list_reminders,
+  delete_reminder: () => require('./reminders').delete_reminder,
+
+  // Finance (Group Fund)
+  add_fund_transaction: () => require('./finance').add_fund_transaction,
+  get_fund_status: () => require('./finance').get_fund_status,
+  list_fund_transactions: () => require('./finance').list_fund_transactions,
 
   // Skills
   import_skill: () => require('./skills').import_skill,

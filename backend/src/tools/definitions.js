@@ -375,17 +375,18 @@ const TOOL_DEFINITIONS = [
     },
   },
 
-  // ── Health Agent ────────────────────────────────────────────────────────────
+  // ── Reminders ───────────────────────────────────────────────────────────────
   {
     type: 'function',
     function: {
-      name: 'create_health_reminder',
-      description: 'Lên lịch nhắc nhở báo thức cho người dùng. Yêu cầu nhập tác vụ và biểu thức cron.',
+      name: 'create_reminder',
+      description: 'Lên lịch nhắc nhở/báo thức (học tập, sức khỏe, công việc...). Yêu cầu nhập tác vụ và biểu thức cron.',
       parameters: {
         type: 'object',
         properties: {
-          task: { type: 'string', description: 'Nội dung công việc cần nhắc nhở (VD: Uống 1 cốc nước)' },
-          cron_expr: { type: 'string', description: 'Biểu thức cron cho thời điểm nhắc nhở. (VD: "0 8 * * *")' },
+          task: { type: 'string', description: 'Nội dung nhắc nhở (VD: Học 10 từ vựng)' },
+          cron_expr: { type: 'string', description: 'Biểu thức cron (VD: "0 8 * * *" là 8h sáng hàng ngày)' },
+          target_chat_id: { type: 'string', description: 'Chat ID mục tiêu để gửi báo thức về đó.' },
         },
         required: ['task', 'cron_expr'],
       },
@@ -394,22 +395,70 @@ const TOOL_DEFINITIONS = [
   {
     type: 'function',
     function: {
-      name: 'list_health_reminders',
-      description: 'Hiện danh sách tất cả các báo thức sức khỏe đang hoạt động của người dùng.',
+      name: 'list_reminders',
+      description: 'Hiện danh sách tất cả các báo thức đang hoạt động.',
       parameters: { type: 'object', properties: {} },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'delete_health_reminder',
-      description: 'Huỷ bỏ 1 nhắc nhở dựa trên reminder_id. Danh sách id có thể lấy từ list_health_reminders.',
+      name: 'delete_reminder',
+      description: 'Huỷ bỏ 1 nhắc nhở dựa trên reminder_id. Lấy id từ list_reminders.',
       parameters: {
         type: 'object',
         properties: {
           reminder_id: { type: 'string' },
         },
         required: ['reminder_id'],
+      },
+    },
+  },
+
+  // ── Group Fund Management ──────────────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'add_fund_transaction',
+      description: 'Ghi lại một khoản thu hoặc chi cho quỹ nhóm. Thu dùng số dương, Chi dùng số âm.',
+      parameters: {
+        type: 'object',
+        properties: {
+          amount: { type: 'number', description: 'Số tiền (VD: 500000 cho thu, -200000 cho chi)' },
+          description: { type: 'string', description: 'Nội dung giao dịch' },
+          category: { type: 'string', description: 'Phân loại (VD: ăn uống, du lịch, đóng quỹ)' },
+          target_chat_id: { type: 'string', description: 'Chat ID của group quỹ này.' },
+        },
+        required: ['amount', 'description', 'target_chat_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_fund_status',
+      description: 'Xem số dư hiện tại, tổng thu và tổng chi của quỹ nhóm.',
+      parameters: {
+        type: 'object',
+        properties: {
+          target_chat_id: { type: 'string' },
+        },
+        required: ['target_chat_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_fund_transactions',
+      description: 'Xem lịch sử các giao dịch thu/chi gần đây của nhóm.',
+      parameters: {
+        type: 'object',
+        properties: {
+          target_chat_id: { type: 'string' },
+          limit: { type: 'number', default: 10 },
+        },
+        required: ['target_chat_id'],
       },
     },
   },

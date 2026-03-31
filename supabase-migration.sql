@@ -121,3 +121,22 @@ CREATE TABLE IF NOT EXISTS reminders (
 
 ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_role_all" ON reminders FOR ALL USING (true);
+
+
+-- Group Fund Transactions Migration
+-- Run in Supabase SQL Editor
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  amount NUMERIC NOT NULL,
+  description TEXT,
+  category TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS transactions_chat_id_idx ON transactions (chat_id);
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all" ON transactions FOR ALL USING (true);

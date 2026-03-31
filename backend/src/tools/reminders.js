@@ -1,19 +1,17 @@
 /**
- * tools/health.js — Personal Health Assistant Tool Implementations
+ * tools/reminders.js — General Reminder Tool Implementations
  */
 
 const db = require('../db');
 const scheduler = require('../scheduler');
 
-async function create_health_reminder({ task, cron_expr }) {
-  // Vì hiện tại cấu hình cho 1 người, ta dùng ownerChatId làm user_id, 
-  // hoặc để mặc định 'owner' để scheduler sử dụng.
+async function create_reminder({ task, cron_expr, target_chat_id }) {
   const id = 'rem-' + Date.now().toString(36);
-  const user_id = 'owner'; 
+  // target_chat_id is used to schedule reminder back to the group
+  const user_id = target_chat_id || 'owner'; 
 
   const row = {
     id,
-    agent_id: 'health_agent',
     user_id,
     task,
     cron_expr,
@@ -32,7 +30,7 @@ async function create_health_reminder({ task, cron_expr }) {
     throw new Error(`DB Error: ${error.message}`);
   }
 
-  // Đồng bộ lại cron jobs
+  // Sync cron jobs
   await scheduler.syncJobs();
 
   return { 
@@ -42,7 +40,7 @@ async function create_health_reminder({ task, cron_expr }) {
   };
 }
 
-async function list_health_reminders() {
+async function list_reminders() {
   const { data, error } = await db.from('reminders').select('*').eq('is_active', true);
   if (error) {
     throw new Error(`DB Error: ${error.message}`);
@@ -51,20 +49,20 @@ async function list_health_reminders() {
   return { reminders: data };
 }
 
-async function delete_health_reminder({ reminder_id }) {
+async function delete_reminder({ reminder_id }) {
   const { error } = await db.from('reminders').update({ is_active: false }).eq('id', reminder_id);
   if (error) {
     throw new Error(`DB Error: ${error.message}`);
   }
 
-  // Đồng bộ lại cron jobs
+  // Sync cron jobs
   await scheduler.syncJobs();
 
   return { success: true, message: `Đã xoá nhắc nhở (ID: ${reminder_id})` };
 }
 
 module.exports = {
-  create_health_reminder,
-  list_health_reminders,
-  delete_health_reminder
+  create_reminder,
+  list_reminders,
+  delete_reminder
 };

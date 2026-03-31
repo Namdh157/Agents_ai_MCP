@@ -25,9 +25,8 @@ async function checkAndTriggerReminders() {
 
       const job = cron.schedule(r.cron_expr, () => {
         logger.info('scheduler', `Triggered reminder: ${r.task}`);
-        if (telegram.sendReminderMessage) {
-            // telegramOwnerChatId là mặc định vì yêu cầu 1 người dùng
-            telegram.sendReminderMessage(r.user_id, r.task, r.id);
+        if (telegram.triggerAgentReminder) {
+            telegram.triggerAgentReminder(r.user_id, r.task, r.id);
         }
       });
       
