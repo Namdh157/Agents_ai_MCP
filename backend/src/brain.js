@@ -181,6 +181,11 @@ Sub-agent skills only affect that agent's LLM output (no tool access).
 // ─── Copilot availability ──────────────────────────────────────────────────────
 
 async function checkOllama() {
+  if (process.env.BRAIN_API_KEY) {
+    config.available = true;
+    config.models = KNOWN_MODELS;
+    return true;
+  }
   try {
     const res = await fetch(COPILOT_MODELS, {
       signal: AbortSignal.timeout(BRAIN_CONSTANTS.MODEL_DISCOVERY_TIMEOUT_MS),
@@ -284,7 +289,10 @@ async function callWithTools(messages, model) {
 
   const res = await fetchWithRetry(COPILOT_CHAT, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(process.env.BRAIN_API_KEY ? { 'Authorization': `Bearer ${process.env.BRAIN_API_KEY}` } : {})
+    },
     body: JSON.stringify({
       model: useModel,
       messages: pruned,
@@ -297,7 +305,7 @@ async function callWithTools(messages, model) {
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`copilot-api error ${res.status}: ${err.slice(0, 200)}`);
+    throw new Error(`Loi khong mong muon khi goi brain ${res.status}: ${err.slice(0, 200)}`);
   }
   const data = await res.json();
   return data.choices[0];
@@ -312,7 +320,10 @@ async function streamChat({ messages, model, onToken, onDone, onError }) {
   try {
     const res = await fetchWithRetry(COPILOT_CHAT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.BRAIN_API_KEY ? { 'Authorization': `Bearer ${process.env.BRAIN_API_KEY}` } : {})
+      },
       body: JSON.stringify({
         model: useModel,
         messages: pruned,
@@ -358,7 +369,10 @@ async function call(messages, model = null) {
   try {
     const res = await fetchWithRetry(COPILOT_CHAT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.BRAIN_API_KEY ? { 'Authorization': `Bearer ${process.env.BRAIN_API_KEY}` } : {})
+      },
       body: JSON.stringify({
         model: useModel,
         messages,
@@ -407,7 +421,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
     ? '\n\n## Persistent Brain Skills\n' +
     brainSkills.map((s, i) => `${i + 1}. ${s}`).join('\n')
     : '';
-    
+
   const session = require('./sessions').getById(agentId)
   const sessionCtx = session?.systemContext?.trim()
     ? `\n\n## Session Context\n${session.systemContext}` : ''
@@ -430,10 +444,10 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
   if (session?.isGroup) {
     const participants = session.participants || ['brain'];
     const agentsModule = require('./agents');
-    
+
     // 1. Detect mentions (e.g. "@dev-agent")
     const mentions = participants.filter(p => p !== 'brain' && userInput.includes(`@${p}`));
-    
+
     // 2. Decide targets and execution mode
     let targets = [];
     if (mentions.length > 0) {
@@ -446,7 +460,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
     if (targets.length > 0) {
       const isPipeline = session.mode === 'pipeline';
       logger.info('brain', `Group session: triggering ${targets.length} specialist(s) in ${isPipeline ? 'PIPELINE' : 'PARALLEL'} mode`);
-      
+
       if (isPipeline) {
         // Sequential execution (A -> B -> C)
         for (const pId of targets) {
@@ -454,7 +468,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
           if (!agent) continue;
 
           onToken(`\n\n> *[Step: ${agent.name}]*\n\n`, agent.name);
-          
+
           await new Promise((resolve) => {
             agentsModule.runAgent({
               agentId: pId,
@@ -502,7 +516,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
         systemPrompt: fullSystemPrompt + '\n\nPlease synthesize the expert opinions above and provide a final conclusion.',
         tokenBudget: BRAIN_CONSTANTS.TOKEN_BUDGET,
       });
-      
+
       // Update loopMessages for the standard Brain loop
       const loopMessages = [
         { role: 'system', content: refreshed.systemPrompt },
