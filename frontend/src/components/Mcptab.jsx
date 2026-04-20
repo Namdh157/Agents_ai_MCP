@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import Skeleton from './Skeleton'
-import McpModal from './McpModal'
+import McpModal from './Mcpmodal'
 
 const PROVIDER_ICONS = {
   slack: '💬', monday: '📋', github: '🐱', notion: '📝',
