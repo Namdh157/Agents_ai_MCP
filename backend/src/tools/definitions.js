@@ -415,6 +415,39 @@ const TOOL_DEFINITIONS = [
     },
   },
 
+  // ── Coaching ────────────────────────────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'get_topic_progress',
+      description: 'Lấy thông tin cấp độ (Level) và lịch sử của một chủ đề (topic) của người dùng.',
+      parameters: {
+        type: 'object',
+        properties: {
+          topic: { type: 'string', description: 'Tên chủ đề (Ví dụ: Học tiếng Anh)' },
+        },
+        required: ['topic'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_topic_progress',
+      description: 'Cập nhật tiến độ chủ đề. Có thể dùng để thay đổi Level, ghi nhận thất bại an toàn, và ghi log lại lịch sử (history).',
+      parameters: {
+        type: 'object',
+        properties: {
+          topic: { type: 'string', description: 'Tên chủ đề' },
+          level_change: { type: 'number', description: 'Giá trị muốn cộng/trừ vào Level hiện tại (VD: 1 để lên cấp, -1 để xuống cấp, 0 để giữ nguyên)' },
+          add_failure: { type: 'boolean', description: 'Set là true nếu muốn cộng thêm 1 vào số lần thất bại (failed_attempts)' },
+          history_note: { type: 'string', description: 'Ghi chú văn bản ngắn về kết quả thực hiện (Ví dụ: "Hoàn thành bài tập", "Không thể chạy vì mưa")' },
+        },
+        required: ['topic'],
+      },
+    },
+  },
+
   // ── Group Fund Management ──────────────────────────────────────────────────
   {
     type: 'function',

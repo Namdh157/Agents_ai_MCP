@@ -25,8 +25,25 @@ async function checkAndTriggerReminders() {
 
       const job = cron.schedule(r.cron_expr, () => {
         logger.info('scheduler', `Triggered reminder: ${r.task}`);
-        if (telegram.triggerAgentReminder) {
-            telegram.triggerAgentReminder(r.user_id, r.task, r.id);
+        // Trigger Brain OS to act as the Coach and handle the task dynamically
+        const brain = require('./brain');
+        const prompt = `[SYSTEM AUTO SCHEDULER]: Đã đến giờ cho nhiệm vụ/lịch hẹn: "${r.task}". 
+Hãy sử dụng tool get_topic_progress để xem level của chủ đề này, sau đó gửi một giáo án/bài tập/lời nhắc phù hợp qua Telegram (tool send_telegram). 
+Đồng thời, cân nhắc thiết lập một nhắc nhở mới (tool create_reminder) sau vài giờ nữa để chủ động nhắn tin hỏi thăm xem tôi đã hoàn thành nhiệm vụ này và đạt kết quả tốt không.`;
+        
+        try {
+          brain.chat({
+            userInput: prompt,
+            agentId: 'brain', 
+            onToken: () => {},
+            onDone: () => { logger.info('scheduler', `Brain đã xử lý xong nhắc nhở: ${r.task}`); },
+            onError: (err) => { logger.error('scheduler', `Brain lỗi khi xử lý nhắc nhở: ${err.message}`); }
+          });
+        } catch (e) {
+          logger.error('scheduler', `Lỗi khi gọi Brain: ${e.message}`);
+          if (telegram.triggerAgentReminder) {
+            telegram.triggerAgentReminder(r.user_id, r.task, r.id); // Fallback
+          }
         }
       });
       

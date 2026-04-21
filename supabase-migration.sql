@@ -140,3 +140,17 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS transactions_chat_id_idx ON transactions (chat_id);
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_role_all" ON transactions FOR ALL USING (true);
+
+-- Adaptive Coach: User Progress
+-- Run in Supabase SQL Editor
+
+CREATE TABLE IF NOT EXISTS user_progress (
+  topic TEXT PRIMARY KEY,
+  level INTEGER DEFAULT 1,
+  failed_attempts INTEGER DEFAULT 0,
+  history JSONB DEFAULT '[]',
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE user_progress ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all" ON user_progress FOR ALL USING (true);

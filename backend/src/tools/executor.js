@@ -55,6 +55,10 @@ const TOOL_MODULES = {
   // Skills
   import_skill: () => require('./skills').import_skill,
 
+  // Coaching
+  get_topic_progress: () => require('./coach').get_topic_progress,
+  update_topic_progress: () => require('./coach').update_topic_progress,
+
   // MCP
   list_mcp_servers: () => require('./mcp').list_mcp_servers,
   create_mcp_server: () => require('./mcp').create_mcp_server,

@@ -19,3 +19,10 @@ When fetching Monday.com board items with column data (status, assignee, estimat
 For Monday.com tasks: skip list_mcp_servers, go directly to mcp_call tool='all_monday_api' with a single GraphQL query containing inline fragments for StatusValue/PeopleValue/NumbersValue. Never use get_board_items_page. Maximum 3 mcp_call total per request.
 
 *Tags: best_practice, tools*
+
+---
+**[18:43:04 21/4/2026]** `LOW` · `content`
+
+The word "belo" is a greeting used by Minions.
+
+*Tags: fact*
