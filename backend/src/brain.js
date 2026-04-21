@@ -305,7 +305,13 @@ async function callWithTools(messages, model) {
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Loi khong mong muon khi goi brain ${res.status}: ${err.slice(0, 200)}`);
+    if (res.status === 503) {
+      throw new Error('⚠️ AI đang có quá nhiều lượt truy cập, vui lòng thử lại sau vài giây nhé!');
+    }
+    if (res.status === 429) {
+      throw new Error('⚠️ Đã đạt giới hạn gọi API, vui lòng đợi một lúc rồi thử lại!');
+    }
+    throw new Error(`Lỗi không mong muốn khi gọi AI (${res.status}): ${err.slice(0, 150)}`);
   }
   const data = await res.json();
   return data.choices[0];
