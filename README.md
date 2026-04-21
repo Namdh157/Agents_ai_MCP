@@ -1,3 +1,6 @@
+# Agents_ai_MCP
+Bộ agents ai sử dụng copilot để làm model phục vụ cho các tác vụ trên máy tính cá nhân
+
 # 🧠 Brain OS
 
 **Local AI Orchestration System** — chạy hoàn toàn trên máy của bạn.
